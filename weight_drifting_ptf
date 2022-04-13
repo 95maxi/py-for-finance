@@ -17,11 +17,11 @@ uploaded = files.upload()
 #CARICAMENTO INPUT
 
 #evoluzione portafoglio "Equity USA"
-UE = pd.read_excel("prova_ag_x_colab (1).xlsx", sheet_name = "UE")  #UE = usa equity
-EE = pd.read_excel("prova_ag_x_colab (1).xlsx", sheet_name = "EE") #EE = europe equity
+Bond_ST = pd.read_excel("ptf.xlsx", sheet_name = "Bond_ST")  #Bond_ST = Obbligazionario Breve Termine
+
 
 #scarico prezzi strumenti sottostanti
-prezzi = pd.read_excel("prova_ag_x_colab.xlsx", sheet_name = "prezzi")
+prezzi = pd.read_excel("ptf.xlsx", sheet_name = "prezzi")
 #imposto la data come indice della variabile "prezzi"
 prezzi.set_index("data", inplace=True)
 
@@ -168,21 +168,37 @@ def final_func(ptf, name_bmk):
   
   
 #chiamo la funzione
-final_func(UE, "UE bmk").head()
+final_func(Bond_ST, "Bond_ST bmk").head()
 
 
-ptf_UE = serie_storica_linea_bmk_base_100(final_func(UE, "UE bmk"), prezzi)
+ptf = serie_storica_linea_bmk_base_100(final_func(Bond_ST, "Bond_ST bmk"), prezzi)
 
 
 #visualizzo graficamente la performance della linea contro benchmark
 plt.figure(figsize=(20,7))
 
-plt.plot(ptf_UE.loc[:,"linea"], label = ptf_UE.columns[0])
-plt.plot(ptf_UE.loc[:,"benchmark"], label = ptf_UE.columns[1])
+plt.plot(ptf.loc[:,"linea"], label = ptf.columns[0])
+plt.plot(ptf.loc[:,"benchmark"], label = ptf.columns[1])
 
 
 plt.legend(loc="upper left")
-plt.title("Andamento USA Equity", size = 24)
+plt.title("Andamento Obbligazionario Breve Termine", size = 24) #imposto il titolo a mano
 plt.show()
+
+
+
+pip install XlsxWriter
+#scarico output in excel
+
+# Create a Pandas Excel writer using XlsxWriter as the engine.
+writer = pd.ExcelWriter('Output.xlsx', engine='xlsxwriter')
+
+# Write each dataframe to a different worksheet.
+final_func(Bond_ST, "Bond_ST bmk").to_excel(writer, sheet_name = "Obb. Short Term")
+
+
+# Close the Pandas Excel writer and output the Excel file.
+writer.save()
+files.download('Output.xlsx')
 
 
