@@ -16,14 +16,14 @@ uploaded = files.upload()
 
 #CARICAMENTO INPUT
 
-#evoluzione portafoglio "Equity Europa"
-Az_Eur = pd.read_excel("ptf.xlsx", sheet_name = "Az.Eur")  #Az_Eur = Azionario Europa
+#evoluzione portafoglio
+ptf = pd.read_excel("ptf.xlsx", sheet_name = "ptf")  #Az_Eur = Azionario Europa
 
 
 #scarico prezzi strumenti sottostanti
-prezzi = pd.read_excel("ptf.xlsx", sheet_name = "prezzi")
+prices = pd.read_excel("ptf.xlsx", sheet_name = "prices")
 #imposto la data come indice della variabile "prezzi"
-prezzi.set_index("data", inplace=True)
+prices.set_index("data", inplace=True)
 
 
 
@@ -65,10 +65,10 @@ def calcolo_pesi(df):
 
 
 
-def weight_drift(df_pesi, prezzi):
+def weight_drift(df_pesi, prices):
   
   # creo variabili rendimenti dei fondi e benchmark
-  rendimenti = prezzi.pct_change()
+  rendimenti = prices.pct_change()
 
   # calcolo variazione pesi per effetto mercato, tenendo conto di eventuali rebalancing
   for index in range(1,len(df_pesi)): 
@@ -103,7 +103,7 @@ def weight_drift(df_pesi, prezzi):
 
 
 
-def serie_storica_portafoglio(df_pesi, rendimenti, prezzi, name_bmk):
+def serie_storica_portafoglio(df_pesi, rendimenti, prices, name_bmk):
 
   # creo dataframe per serie storica portafoglio
   portafoglio = pd.DataFrame(index = df_pesi.index,
@@ -126,7 +126,7 @@ def serie_storica_portafoglio(df_pesi, rendimenti, prezzi, name_bmk):
       portafoglio.drop(index=day, inplace=True)
 
   
-  portafoglio["benchmark"] = prezzi[name_bmk].pct_change()  #prima era "bmk"
+  portafoglio["benchmark"] = prices[name_bmk].pct_change()  #prima era "bmk"
   portafoglio["tracking error"] = portafoglio["rendimenti"] - portafoglio["benchmark"]
 
 
@@ -134,7 +134,7 @@ def serie_storica_portafoglio(df_pesi, rendimenti, prezzi, name_bmk):
 
 
 #funzione per grafico
-def serie_storica_linea_bmk_base_100(portafoglio, prezzi):
+def serie_storica_linea_bmk_base_100(portafoglio, prices):
 
   prezzi_base_100 = pd.DataFrame(index = portafoglio.index,
                                   columns = ["linea","benchmark"])
@@ -148,8 +148,7 @@ def serie_storica_linea_bmk_base_100(portafoglio, prezzi):
 
       prezzi_base_100.iloc[indice, asset] = prezzi_base_100.iloc[indice-1, asset] * portafoglio.iloc[indice, asset] + prezzi_base_100.iloc[indice-1, asset]
 
-  return prezzi_base_100
-  
+  return prezzi_base_100  
   
   
   
@@ -157,32 +156,31 @@ def serie_storica_linea_bmk_base_100(portafoglio, prezzi):
 def final_func(ptf, name_bmk):
 
   df_pesi = calcolo_pesi(ptf)
-  df_pesi, rendimenti = weight_drift(df_pesi, prezzi)
-  portafoglio = serie_storica_portafoglio(df_pesi, rendimenti, prezzi, name_bmk)
+  df_pesi, rendimenti = weight_drift(df_pesi, prices)
+  portafoglio = serie_storica_portafoglio(df_pesi, rendimenti, prices, name_bmk)
 
   return portafoglio
   
   
   
-  
 #chiamo la funzione
-final_func(Az_Eur, "Az.Eur bmk").head()
+final_func(ptf, "bmk").head()
 
 
 
-ptf = serie_storica_linea_bmk_base_100(final_func(Az_Eur, "Az.Eur bmk"), prezzi)
+ptf_bmk = serie_storica_linea_bmk_base_100(final_func(ptf, "bmk"), prices)
 
 
 
 #visualizzo graficamente la performance della linea contro benchmark
 plt.figure(figsize=(20,7))
 
-plt.plot(ptf.loc[:,"linea"], label = ptf.columns[0])
-plt.plot(ptf.loc[:,"benchmark"], label = ptf.columns[1])
+plt.plot(ptf_bmk.loc[:,"linea"], label = ptf_bmk.columns[0])
+plt.plot(ptf_bmk.loc[:,"benchmark"], label = ptf_bmk.columns[1])
 
 
 plt.legend(loc="upper left")
-plt.title("Andamento Azionario Europa", size = 24) #imposto il titolo a mano
+plt.title("Andamento Portafoglio", size = 24) #imposto il titolo a mano
 plt.show()
 
 
@@ -194,7 +192,7 @@ pip install XlsxWriter
 writer = pd.ExcelWriter('Output.xlsx', engine='xlsxwriter')
 
 # Write each dataframe to a different worksheet.
-final_func(Az_Eur, "Az.Eur bmk").to_excel(writer, sheet_name = "Azionario Europa")
+final_func(ptf, "bmk").to_excel(writer, sheet_name = "Portafoglio")
 
 
 # Close the Pandas Excel writer and output the Excel file.
