@@ -1,0 +1,493 @@
+import pandas as pd
+import numpy as np
+import datetime as dt
+import math
+import matplotlib.pyplot as plt
+from google.colab import files
+import statsmodels.api as sm
+
+#uplaod inputs
+uploaded = files.upload()
+
+
+df = pd.read_excel("ptf.xlsx", sheet_name = "prices")
+df.set_index("Data", inplace=True)
+
+#show how many days there are in your dataset
+time_delta = df.index[len(df)-1] - df.index[0]
+print(f"There are {time_delta.days} days in your dataset")
+
+class Asset():
+
+
+  def __init__(self, price_asset, price_benchmark, name_asset, name_benchmark):
+
+    #The input needed is a file with the prices of instruments and those of benchamrk, that should have the same length and be ordered by date
+    #prices istruments and benchmark
+    self.price_asset = price_asset 
+    self.price_benchmark= price_benchmark 
+
+    #name instruments
+    self.name_asset = name_asset
+    self.name_benchmark = name_benchmark
+
+    #instruments returns
+    self.asset_returns = self.price_asset.pct_change()*100
+    self.asset_returns.dropna(inplace=True)
+
+    #standard deviation of instruments
+    self.dev_st_asset = math.sqrt(self.asset_returns.var())
+
+    #annualized volatility (DEVIANZA STANDARD * RADQ(255))
+    self.asset_volatility= self.dev_st_asset * math.sqrt(255) 
+
+    #returns and standard deviation of benchmark
+    self.benchmark_returns = self.price_benchmark.pct_change()*100
+    self.benchmark_returns.dropna(inplace=True)
+    self.dev_st_benchmark = math.sqrt(self.benchmark_returns.var())
+        
+    #annualized volatility benchmark
+    self.benchmark_volatility= self.dev_st_benchmark * math.sqrt(255) 
+
+    #relative returns and volatility
+    self.relative_returns = self.asset_returns - self.benchmark_returns
+    self.relative_risk = self.asset_volatility - self.benchmark_volatility
+
+    #beta of instruments
+    self.asset_beta = self.asset_returns.cov(self.benchmark_returns)/self.benchmark_returns.var()
+        
+    #drawdown
+    self.asset_drawdown = self.price_asset/self.price_asset.expanding(min_periods=1).max() - 1
+
+    #drawdown benchmark
+    self.benchmark_drawdown = self.price_benchmark/self.price_benchmark.expanding(min_periods=1).max() - 1
+
+    #return of instruments and benchamrk normalized
+    self.normalized_returns = self.normalized_returns()
+    self.benchmark_normalized_returns = self.benchmark_normalized_returns()
+
+    #performance asset e benchmark
+    self.performance = ((self.price_asset[len(self.price_asset)-1] - self.price_asset.iloc[0]) / self.price_asset.iloc[0]) * 100
+    self.performance_benchmark = ((self.price_benchmark[len(self.price_benchmark)-1] - self.price_benchmark.iloc[0]) / self.price_benchmark.iloc[0]) * 100
+
+    #infomation ratio
+    self.information_ratio = (self.performance - self.performance_benchmark) / self.asset_volatility
+
+    #TEV (monthly prices)
+    a = self.normalized_returns.asfreq("M").pct_change().dropna() * 100
+    b = self.benchmark_normalized_returns.asfreq("M").pct_change().dropna() * 100
+    self.TEV = (a-b).std() * math.sqrt(255) 
+
+
+
+  def normalized_returns(self):
+    normalized = self.price_asset.pct_change().copy()
+    normalized.iloc[0] = 100
+
+    for row in range(1, len(normalized)):
+      temp = (normalized.iloc[row-1] * (self.price_asset.pct_change().iloc[row])) + normalized.iloc[row-1]
+      normalized.iloc[row] = temp
+    return normalized
+
+    
+
+  def benchmark_normalized_returns(self):
+    normalized = self.price_benchmark.pct_change().copy()
+    normalized.iloc[0] = 100
+
+    for row in range(1, len(normalized)):
+      temp = normalized.iloc[row-1] * (self.price_benchmark.pct_change().iloc[row]) + normalized.iloc[row-1]
+      normalized.iloc[row] = temp
+    return normalized
+
+
+  def info(self):
+      print("TITLE : " + self.name_asset)
+      print("ASSET PERFORMANCE : " + str(self.performance))
+      print("ASSET VOLATILITY : " + str(self.asset_volatility))
+      print(" ")
+      print("BENCHMARK : " + self.name_benchmark)
+      print("BENCHMARK PERFORMANCE : " + str(self.performance_benchmark))
+      print("BENCHMARK VOLATILITY : " + str(self.benchmark_volatility))
+      print(" ")
+      print("BETA: " + str(self.asset_beta))
+      print("ASSET MAX DRAWDOWN : " + str(self.asset_drawdown.min()))
+      print("INFORMATION RATIO : " + str(self.information_ratio))
+
+
+  def regression(self):
+
+      #indipendent variable (returns benchmark)
+      XVar = self.benchmark_returns
+      XVar = sm.add_constant(XVar)
+
+      #dipendent variable (returns asset)
+      YVar = self.asset_returns
+
+      #model with intercept
+      linearModel = sm.OLS(YVar, XVar).fit()
+      print(linearModel.summary()) 
+
+
+
+#Creation of new assets
+
+#equity
+LU1135865084 = Asset(df["LU1135865084"], df["benchmark equity"], "Lyxor S&P 500", "MSCI World")
+IE00BQN1K901 = Asset(df["IE00BQN1K901"], df["benchmark equity"], "iShares Europe Value", "MSCI World")
+
+#bond
+IE00B7J7TB45 = Asset(df["IE00B7J7TB45"], df["benchmark bond"], "iShares Global Corp", "Bloomberg Global Aggregate Index")
+IE00BJSBCS90 = Asset(df["IE00BJSBCS90"], df["benchmark bond"], "GS China Government Bond", "Bloomberg Global Aggregate Index")
+IE00B74DQ490 = Asset(df["IE00B74DQ490"], df["benchmark bond"], "iShares Global High Yield", "Bloomberg Global Aggregate Index")
+
+#commodity
+GB00B15KY989 = Asset(df["GB00B15KY989"], df["no benchmark"], "WisdomTree Broad Commodities", "no benchmark")
+
+#cash
+AU00000ISEC1 = Asset(df["AU00000ISEC1"], df["no benchmark"], "iShares Enhanced Cash", "no benchmark")
+
+
+
+
+#Grapgh of the single instruments
+
+import seaborn
+seaborn.set()
+
+plt.figure(figsize=(20,7))
+plt.plot(LU1135865084.normalized_returns, label = LU1135865084.name_asset)
+plt.plot(IE00BQN1K901.normalized_returns, label = IE00BQN1K901.name_asset)
+plt.plot(LU1135865084.benchmark_normalized_returns, label = LU1135865084.name_benchmark)
+
+
+plt.legend(loc="upper left")
+plt.title("Asset and Benchmark Performance", size = 24)
+plt.show()
+
+
+
+#bond
+
+plt.figure(figsize=(20,7))
+
+plt.plot(IE00B7J7TB45.normalized_returns, label = IE00B7J7TB45.name_asset)
+plt.plot(IE00BJSBCS90.normalized_returns, label = IE00BJSBCS90.name_asset)
+plt.plot(IE00B74DQ490.normalized_returns, label = IE00B74DQ490.name_asset)
+plt.plot(IE00B7J7TB45.benchmark_normalized_returns, label = IE00B7J7TB45.name_benchmark)
+
+
+plt.legend(loc="upper left")
+plt.title("Asset and Benchmark Performance", size = 30)
+plt.show()
+
+
+
+#commodity
+plt.figure(figsize=(20,7))
+
+plt.plot(GB00B15KY989.normalized_returns, label = GB00B15KY989.name_asset)
+plt.plot(GB00B15KY989.benchmark_normalized_returns, label = GB00B15KY989.name_benchmark)
+
+
+plt.legend(loc="upper left")
+plt.title("Asset and Benchmark Performance", size = 30)
+plt.show()
+
+
+class Asset_Type():
+
+    
+    def __init__(self, *asset, weights, name):
+        print("New Asset Type created")
+        self.asset = asset
+        self.weights = weights
+
+        #give a name to the Asset Type
+        self.name = name
+        
+        #returns
+        self.asset_type_returns = self.asset_type_returns()
+        self.benchmark_returns = self.benchmark_returns()
+        
+        #normalized prices of asset type and benchmark
+        self.asset_type_normalized_returns = self.normalized_returns()
+        self.benchmark_normalized_returns = self.benchmark_normalized_returns()
+        
+        #asset type performance
+        self.asset_type_performance = ((self.asset_type_normalized_returns[len(self.asset_type_normalized_returns)-1] - 100) / 100) * 100
+        self.benchmark_performance = ((self.benchmark_normalized_returns[len(self.benchmark_normalized_returns)-1] - 100) / 100) * 100
+        self.asset_type_relative_performance = self.asset_type_performance - self.benchmark_performance
+
+        #asset type and benchmark standard deviation
+        self.dev_st_asset_type = math.sqrt(self.asset_type_returns.var())
+        self.dev_st_benchmark = math.sqrt(self.benchmark_returns.var())
+
+        #asset type and benchmark volatility
+        self.asset_type_volatility= self.dev_st_asset_type * math.sqrt(255)
+        self.benchmark_volatility= self.dev_st_benchmark * math.sqrt(255)  
+
+        #asset type drawdown
+        self.drawdown = self.asset_type_normalized_returns/self.asset_type_normalized_returns.expanding(min_periods=1).max() - 1
+
+        #benchmark drawdown
+        self.benchmark_drawdown = self.benchmark_normalized_returns/self.benchmark_normalized_returns.expanding(min_periods=1).max() - 1
+
+        #TEV (sui prezzi mensili)
+        a = self.asset_type_normalized_returns.asfreq("M").pct_change().dropna() * 100
+        b = self.benchmark_normalized_returns.asfreq("M").pct_change().dropna() * 100
+        self.TEV =(a-b).std() * math.sqrt(12) 
+
+    def asset_type_returns(self):
+        index = 0
+        test = pd.DataFrame()
+        
+        for company in self.asset:
+            test[index] = company.asset_returns * self.weights[index]
+            index += 1
+        return test.sum(axis=1)
+
+    def normalized_returns(self):
+      normalized = self.asset_type_returns.copy()
+      normalized.iloc[0] = 100
+
+      for row in range(0, len(normalized)-1):
+        temp = normalized.iloc[row] * (self.asset_type_returns.iloc[row]/100) + normalized.iloc[row]
+        normalized.iloc[row+1] = temp
+      return normalized
+
+    def benchmark_returns(self):
+        index = 0
+        test = pd.DataFrame()
+        
+        for company in self.asset:
+            test[index] = company.benchmark_returns * self.weights[index]
+            index += 1
+        return test.sum(axis=1)
+
+    def benchmark_normalized_returns(self):
+      normalized = self.benchmark_returns.copy()
+      normalized.iloc[0] = 100
+
+      for row in range(0, len(normalized)-1):
+        temp = normalized.iloc[row] * (self.benchmark_returns.iloc[row]/100) + normalized.iloc[row]
+        normalized.iloc[row+1] = temp
+      return normalized
+
+
+    def composition(self):
+        x = 0
+        for company in self.asset:
+            print(company.name_asset, "->", self.weights[x])
+            x+=1
+
+    def return_for_assets(self):
+        x = 0
+        for company in self.asset:
+            print({company.name_asset: self.weights[x]} ,company.performance) # * self.weights[x]) DA SBLOCCARE SE VOGLIO PERF PESATA
+            x+=1
+        print({"Total Asset class performance is " : self.asset_type_performance})
+        
+        
+    def risk_for_assets(self):
+        for company in self.asset:
+            print(company.name_asset , ":" , company.asset_volatility)
+        print({"Total Asset class volatility is " : self.asset_type_volatility})
+
+
+    def correlation(self):
+      test = pd.DataFrame()
+      index = 0
+
+      for company in self.asset:
+        test[company.name_asset] = company.asset_returns * self.weights[index]
+        index += 1
+      return test.corr()
+
+
+    def regression(self):
+
+      #indipendent variable (benchmark returns)
+      XVar = self.benchmark_returns
+      XVar = sm.add_constant(XVar)
+
+      #dipendent variable (asset type returns)
+      YVar = self.asset_type_returns
+
+      #model with intercept
+      linearModel = sm.OLS(YVar, XVar).fit()
+      print(linearModel.summary()) 
+      
+      
+      
+#CREATION OF ASSET TYPES: EQUITY, BOND, COMMODITY, CASH
+
+equity = Asset_Type(LU1135865084, IE00BQN1K901, weights=[0.5, 0.5], name="Equity 50/50")
+equity2 = Asset_Type(LU1135865084, IE00BQN1K901, weights=[0.1, 0.9], name="Equity 10/90")
+
+bond = Asset_Type(IE00B7J7TB45, IE00BJSBCS90, IE00B74DQ490, weights=[0.34, 0.33, 0.33], name="Bond")
+
+commodity = Asset_Type(GB00B15KY989, weights=[1], name="Commodity")
+
+cash = Asset_Type(AU00000ISEC1, weights=[1], name="Cash")
+
+
+
+
+#graph single asset type and single instruments
+plt.figure(figsize=(20,7))
+
+plt.title("Performance asset type")
+
+plt.plot(equity.asset_type_normalized_returns, label = equity.name)
+plt.plot(equity2.asset_type_normalized_returns, label = equity2.name)
+
+plt.plot(equity.benchmark_normalized_returns, label = "benchmark")
+
+plt.legend();
+
+
+
+
+plt.figure(figsize=(20,7))
+
+plt.title("Drawdown")
+plt.plot(bond.drawdown, label = bond.name)
+
+plt.legend();
+
+
+
+class Portfolio():
+    
+    def __init__(self, *classes, weights):
+        print("New Portfolio Created")
+        self.classes = classes
+        self.weights = weights
+
+        #portfolio returns
+        self.returns = self.portfolio_returns()
+        self.portfolio_benchmark_returns = self.portfolio_benchmark_returns()
+        
+        #portfolio normalized return
+        self.normalized_returns = self.normalized_returns()
+
+        #benchmark normalized prices
+        self.benchmark_normalized_returns = self.benchmark_normalized_returns()
+
+        #portfolio standard deviation
+        self.dev_st_portfolio = math.sqrt(self.returns.var())
+
+        #portfolio volatility
+        self.portfolio_volatility= self.dev_st_portfolio * math.sqrt(255) 
+
+        #drawdown
+        self.drawdown = self.normalized_returns/self.normalized_returns.expanding(min_periods=1).max() - 1
+
+        #benchmark drawdown
+        self.drawdown_benchmark = self.benchmark_normalized_returns/self.benchmark_normalized_returns.expanding(min_periods=1).max() - 1
+
+
+        #portfolio performance
+        self.portfolio_performance = ((self.normalized_returns[len(self.normalized_returns)-1] - 100) / 100) * 100
+        self.benchmark_performance = ((self.benchmark_normalized_returns[len(self.benchmark_normalized_returns)-1] - 100) / 100) * 100
+        self.portfolio_relative_performance = self.portfolio_performance - self.benchmark_performance
+
+        #portfolio TEV (monthly proces)
+        a = self.normalized_returns.asfreq("M").pct_change().dropna() * 100
+        b = self.benchmark_normalized_returns.asfreq("M").pct_change().dropna() * 100
+        self.TEV =(a-b).std()
+        
+    
+    def portfolio_returns(self):
+        return sum(clas.asset_type_returns * self.weights[index]  for index, clas in enumerate(self.classes))
+    
+    
+    def normalized_returns(self):
+      normalized = self.returns.copy()
+      normalized.iloc[0] = 100
+
+      for row in range(0, len(normalized)-1):
+        temp = normalized.iloc[row] * (self.returns.iloc[row]/100) + normalized.iloc[row]
+        normalized.iloc[row+1] = temp
+      return normalized
+    
+    def composition(self):
+        for asset_type in self.classes:
+            print(asset_type.composition())
+
+    def correlation(self):
+      test = pd.DataFrame()
+      index = 0
+
+      for clas in self.classes:
+        test[clas.name] = clas.asset_type_returns #* self.weights[index]  --> unlock if you want weighted performance
+        index += 1
+      return test.corr()
+      
+
+    def portfolio_benchmark_returns(self):
+        return sum(clas.benchmark_returns * self.weights[index]  for index, clas in enumerate(self.classes))
+
+
+    def benchmark_normalized_returns(self):
+      normalized = self.portfolio_benchmark_returns.copy()
+      normalized.iloc[0] = 100
+
+      for row in range(0, len(normalized)-1):
+        temp = normalized.iloc[row] * (self.portfolio_benchmark_returns.iloc[row]/100) + normalized.iloc[row]
+        normalized.iloc[row+1] = temp
+      return normalized
+
+
+    def return_for_assets(self):
+      x = 0
+      for clas in self.classes:
+          print({clas.name: self.weights[x]} ,clas.asset_type_performance) #* self.weights[x])  --> unlock if you want weighted performance
+          x+=1
+      print({"Total Asset class performance is " : self.portfolio_performance})
+        
+        
+    def risk_for_assets(self):
+      for clas in self.classes:
+        print(clas.name , ":" , clas.asset_type_volatility)
+      print({"Total Asset class volatility is " : self.portfolio_volatility})
+
+
+    def regression(self):
+
+      #indipendent variable (benchmark returns)
+      XVar = self.portfolio_benchmark_returns
+      XVar = sm.add_constant(XVar)
+
+      #dipendetn variable (portfolio returns)
+      YVar = self.returns
+
+      #model with intercept
+      linearModel = sm.OLS(YVar, XVar).fit()
+      print(linearModel.summary()) 
+      
+      
+      
+#Creation of an equal weighted portfolio
+
+Ptf_1 = Portfolio(equity, bond, commodity, cash, weights=[0.25, 0.25, 0.25, 0.25])
+Ptf_2 = Portfolio(equity, bond, commodity, cash, weights=[0.20, 0.30, 0.10, 0.40])
+
+
+#graph ptf
+plt.figure(figsize=(20,7))
+
+plt.title("Portfolio performance")
+
+plt.plot(Ptf_1.normalized_returns, label = "equal weight")
+plt.plot(Ptf_2.normalized_returns, label = "vol based")
+plt.plot(Ptf_2.benchmark_normalized_returns, label = "benchmark")
+
+plt.legend();
+
+
+Ptf_1.return_for_assets()
+Ptf_2.return_for_assets()
+Ptf_1.risk_for_assets()
+Ptf_2.risk_for_assets()
